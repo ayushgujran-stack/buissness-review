@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "ReVu",
+    "slug": "owner-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.revu.ownerapp",
+      "adaptiveIcon": {
+        "backgroundColor": "#000000",
+        "foregroundImage": "./assets/android-icon-foreground.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "cc9220fc-16d8-4231-8997-ea569b332159"
+      }
+    },
+    "owner": "ayush_tall"
+  }
+}

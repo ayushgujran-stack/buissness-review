@@ -1,0 +1,62 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to safely get the current user's brandId
+    function getUserBrandId() {
+      return (request.auth != null && exists(/databases/$(database)/documents/users/$(request.auth.uid))) 
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.brandId 
+        : null;
+    }
+
+    // Feedback Collection: 
+    match /feedbacks/{feedbackId} {
+      // Anyone can create (QR code scans)
+      allow create: if true;
+      // Only users who belong to the same brand can read it
+      allow read: if request.auth != null && resource.data.brandId == getUserBrandId();
+      allow update, delete: if false;
+    }
+
+    // User Collection:
+    match /users/{userId} {
+      // Users can only read and write their own data
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Brands Collection:
+    match /brands/{brandId} {
+      // Anyone can read brands so managers can search for them
+      allow read: if true;
+      // Only the owner can create, update, or delete their brand
+      allow create: if request.auth != null && request.resource.data.ownerUid == request.auth.uid;
+      allow update, delete: if request.auth != null && resource.data.ownerUid == request.auth.uid;
+    }
+
+    // Branches Collection:
+    match /branches/{branchId} {
+      // Must belong to the brand to create or delete
+      allow create: if request.auth != null && request.resource.data.brandId == getUserBrandId();
+      allow delete: if request.auth != null && resource.data.brandId == getUserBrandId();
+      
+      // Anyone can read branches so managers can pick their branch
+      allow read: if true;
+      
+      // Allow the brand owner to update, OR allow a new manager to claim an unclaimed branch
+      allow update: if request.auth != null && (
+        resource.data.brandId == getUserBrandId() ||
+        (resource.data.managerUid == null && 
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['managerUid']) &&
+         request.resource.data.managerUid == request.auth.uid)
+      );
+    }
+
+    // Review Requests Collection:
+    match /review_requests/{requestId} {
+      allow read: if request.auth != null && resource.data.brandId == getUserBrandId();
+      allow create: if request.auth != null && request.resource.data.brandId == getUserBrandId();
+      allow update: if request.auth != null && resource.data.brandId == getUserBrandId();
+      allow delete: if false;
+    }
+  }
+}
