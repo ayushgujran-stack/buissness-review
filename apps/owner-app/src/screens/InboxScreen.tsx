@@ -6,14 +6,17 @@ import { db } from '../../firebase';
 import { collection, query, where, doc, updateDoc, onSnapshot, serverTimestamp, orderBy } from 'firebase/firestore';
 
 export default function InboxScreen() {
-  const { role, brandId, branchId } = useUser();
+  const { role, brandId, branchId, isDemo } = useUser();
   const [requests, setRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'pending' | 'history'>('pending');
   const [processing, setProcessing] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!brandId) return;
+    if (!brandId || (isDemo && !auth.currentUser)) {
+      setLoading(false);
+      return;
+    }
 
     setLoading(true);
     let q;

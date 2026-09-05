@@ -38,9 +38,11 @@ function MainApp() {
     return () => unsubscribe();
   }, []);
 
+  const { role, brandId, isDemo } = useUser();
+
   // Listen for pending review requests to show notification badge
   useEffect(() => {
-    if (!brandId || !role) {
+    if (!brandId || !role || isDemo || !auth.currentUser) {
       setPendingCount(0);
       return;
     }

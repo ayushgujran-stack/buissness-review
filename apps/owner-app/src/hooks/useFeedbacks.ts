@@ -19,12 +19,12 @@ export type FeedbackData = {
 };
 
 export function useFeedbacks(specificBranchId?: string | null, ignoreRoleRestriction = false) {
-  const { role, brandId, branchId } = useUser();
+  const { role, brandId, branchId, isDemo } = useUser();
   const [feedbacks, setFeedbacks] = useState<FeedbackData[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!brandId) {
+    if (!brandId || (isDemo && !auth.currentUser)) {
       setLoading(false);
       return;
     }
