@@ -74,6 +74,98 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     }
   }
 
+  void _showForgotPasswordDialog() {
+    final resetEmailCtrl = TextEditingController(text: _emailController.text);
+    bool sending = false;
+    String? resetMsg;
+    bool isSuccess = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Reset Password'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'Enter your registered email address to receive password reset instructions.',
+                    style: TextStyle(fontSize: 13, color: AppColors.textSecondaryLight),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: resetEmailCtrl,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: const InputDecoration(
+                      labelText: 'Email Address',
+                      prefixIcon: Icon(Icons.email_outlined),
+                    ),
+                  ),
+                  if (resetMsg != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      resetMsg!,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: isSuccess ? AppColors.good : AppColors.poor,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: sending
+                      ? null
+                      : () async {
+                          final email = resetEmailCtrl.text.trim();
+                          if (!email.contains('@')) {
+                            setDialogState(() {
+                              resetMsg = 'Please enter a valid email address';
+                              isSuccess = false;
+                            });
+                            return;
+                          }
+
+                          setDialogState(() => sending = true);
+                          try {
+                            await ref.read(authServiceProvider).sendPasswordResetEmail(email);
+                            setDialogState(() {
+                              sending = false;
+                              isSuccess = true;
+                              resetMsg = 'Password reset link sent! Check your inbox.';
+                            });
+                          } catch (e) {
+                            setDialogState(() {
+                              sending = false;
+                              isSuccess = false;
+                              resetMsg = e.toString().replaceAll('Exception: ', '');
+                            });
+                          }
+                        },
+                  child: sending
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                        )
+                      : const Text('Send Reset Link'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -209,6 +301,25 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                             validator: (v) => v == null || v.isEmpty ? 'Confirm your password' : null,
                           ),
                           const SizedBox(height: 14),
+                        ],
+
+                        if (!_isSignUp) ...[
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton(
+                              style: TextButton.styleFrom(
+                                padding: EdgeInsets.zero,
+                                minimumSize: const Size(50, 30),
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              onPressed: _showForgotPasswordDialog,
+                              child: const Text(
+                                'Forgot Password?',
+                                style: TextStyle(fontSize: 13, color: AppColors.brandPrimary),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
                         ],
 
                         ElevatedButton(

@@ -126,31 +126,37 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
                 ),
               ),
             ),
-            ListTile(
-              leading: const Icon(Icons.analytics_outlined),
-              title: const Text('Analytics'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(context, MaterialPageRoute(builder: (_) => const AnalyticsScreen()));
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.picture_as_pdf_outlined),
-              title: const Text('Reports & Export'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportsScreen()));
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.notifications_outlined),
-              title: const Text('Notifications'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationCenterScreen()));
-              },
-            ),
-            if (userProfile?.role == UserRole.owner || userProfile?.role == UserRole.superAdmin) ...[
+            if (userProfile?.hasPermission(AppPermissions.viewDashboard) ?? true) ...[
+              ListTile(
+                leading: const Icon(Icons.analytics_outlined),
+                title: const Text('Analytics'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => const AnalyticsScreen()));
+                },
+              ),
+            ],
+            if (userProfile?.hasPermission(AppPermissions.viewReports) ?? true) ...[
+              ListTile(
+                leading: const Icon(Icons.picture_as_pdf_outlined),
+                title: const Text('Reports & Export'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportsScreen()));
+                },
+              ),
+            ],
+            if (userProfile?.hasPermission(AppPermissions.receiveAlerts) ?? true) ...[
+              ListTile(
+                leading: const Icon(Icons.notifications_outlined),
+                title: const Text('Notifications'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationCenterScreen()));
+                },
+              ),
+            ],
+            if (userProfile?.hasPermission(AppPermissions.manageTeam) ?? false) ...[
               ListTile(
                 leading: const Icon(Icons.group_outlined),
                 title: const Text('Team Management'),
@@ -159,6 +165,8 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
                   Navigator.push(context, MaterialPageRoute(builder: (_) => const TeamScreen()));
                 },
               ),
+            ],
+            if (userProfile?.hasPermission(AppPermissions.manageLicense) ?? false) ...[
               ListTile(
                 leading: const Icon(Icons.card_membership_outlined),
                 title: const Text('License & Billing'),

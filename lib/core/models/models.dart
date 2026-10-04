@@ -35,6 +35,46 @@ extension UserRoleExtension on UserRole {
   }
 }
 
+class AppPermissions {
+  static const String viewDashboard = 'VIEW_DASHBOARD';
+  static const String viewReviews = 'VIEW_REVIEWS';
+  static const String viewCustomers = 'VIEW_CUSTOMERS';
+  static const String viewReports = 'VIEW_REPORTS';
+  static const String receiveAlerts = 'RECEIVE_ALERTS';
+  static const String manageBusiness = 'MANAGE_BUSINESS';
+  static const String manageBranch = 'MANAGE_BRANCH';
+  static const String manageForms = 'MANAGE_FORMS';
+  static const String manageQr = 'MANAGE_QR';
+  static const String manageTeam = 'MANAGE_TEAM';
+  static const String manageLicense = 'MANAGE_LICENSE';
+  static const String managePayments = 'MANAGE_PAYMENTS';
+  static const String exportData = 'EXPORT_DATA';
+
+  static const List<String> allOperationalPermissions = [
+    viewDashboard,
+    viewReviews,
+    viewCustomers,
+    viewReports,
+    receiveAlerts,
+    manageBusiness,
+    manageBranch,
+    manageForms,
+    manageQr,
+    manageTeam,
+    manageLicense,
+    managePayments,
+    exportData,
+  ];
+
+  static const List<String> defaultManagerPermissions = [
+    viewDashboard,
+    viewReviews,
+    viewCustomers,
+    viewReports,
+    receiveAlerts,
+  ];
+}
+
 class UserModel {
   final String id;
   final String authUid;
@@ -45,6 +85,9 @@ class UserModel {
   final String mobile;
   final String status;
   final bool forcePasswordChange;
+  final List<String> allowedBusinessIds;
+  final List<String> allowedBranchIds;
+  final List<String> permissions;
 
   UserModel({
     required this.id,
@@ -56,7 +99,33 @@ class UserModel {
     required this.mobile,
     this.status = 'active',
     this.forcePasswordChange = false,
+    this.allowedBusinessIds = const [],
+    this.allowedBranchIds = const [],
+    this.permissions = const [],
   });
+
+  bool get isActive => status == 'active';
+
+  bool hasPermission(String permission) {
+    if (role == UserRole.superAdmin || role == UserRole.owner) {
+      return true;
+    }
+    return permissions.contains(permission);
+  }
+
+  bool canAccessBusiness(String businessId) {
+    if (role == UserRole.superAdmin || role == UserRole.owner) {
+      return true;
+    }
+    return allowedBusinessIds.isEmpty || allowedBusinessIds.contains(businessId);
+  }
+
+  bool canAccessBranch(String branchId) {
+    if (role == UserRole.superAdmin || role == UserRole.owner) {
+      return true;
+    }
+    return allowedBranchIds.isEmpty || allowedBranchIds.contains(branchId);
+  }
 
   factory UserModel.fromMap(Map<String, dynamic> map, String docId) {
     return UserModel(
@@ -69,6 +138,9 @@ class UserModel {
       mobile: map['mobile'] ?? '',
       status: map['status'] ?? 'active',
       forcePasswordChange: map['force_password_change'] ?? false,
+      allowedBusinessIds: List<String>.from(map['allowed_business_ids'] ?? []),
+      allowedBranchIds: List<String>.from(map['allowed_branch_ids'] ?? []),
+      permissions: List<String>.from(map['permissions'] ?? []),
     );
   }
 
@@ -83,6 +155,9 @@ class UserModel {
       'mobile': mobile,
       'status': status,
       'force_password_change': forcePasswordChange,
+      'allowed_business_ids': allowedBusinessIds,
+      'allowed_branch_ids': allowedBranchIds,
+      'permissions': permissions,
     };
   }
 }

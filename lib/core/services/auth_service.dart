@@ -20,10 +20,15 @@ class AuthService {
     return UserModel.fromMap(doc.data()!, doc.id);
   }
 
-  /// Sign In with Email & Password
+  /// Sign In with Email & Password (supports 'admin' username alias for Super Admin)
   Future<UserModel> signIn({required String email, required String password}) async {
+    String resolvedEmail = email.trim();
+    if (resolvedEmail.toLowerCase() == 'admin') {
+      resolvedEmail = 'admin@reviewflow.in';
+    }
+
     final credential = await _auth.signInWithEmailAndPassword(
-      email: email.trim(),
+      email: resolvedEmail,
       password: password,
     );
 
@@ -31,6 +36,7 @@ class AuthService {
     final userDoc = await _firestore.collection('users').doc(uid).get();
 
     if (!userDoc.exists) {
+      await _auth.signOut();
       throw Exception('User profile not found in database.');
     }
 
@@ -39,6 +45,18 @@ class AuthService {
     if (userModel.status == 'deactivated' || userModel.status == 'suspended') {
       await _auth.signOut();
       throw Exception('Your account is ${userModel.status}. Please contact support.');
+    }
+
+    // Verify tenant owner's status if user is an operational staff member (Admin/Manager/SuperManager)
+    if (userModel.role != UserRole.superAdmin && userModel.role != UserRole.owner) {
+      final ownerDoc = await _firestore.collection('users').doc(userModel.ownerId).get();
+      if (ownerDoc.exists) {
+        final ownerStatus = ownerDoc.data()?['status'] ?? 'active';
+        if (ownerStatus == 'deactivated' || ownerStatus == 'suspended') {
+          await _auth.signOut();
+          throw Exception('The tenant organization has been $ownerStatus. Access restricted.');
+        }
+      }
     }
 
     return userModel;

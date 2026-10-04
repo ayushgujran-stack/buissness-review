@@ -75,5 +75,61 @@ void main() {
       expect(UserRole.superAdmin.value, 'SUPER_ADMIN');
       expect(UserRole.owner.value, 'OWNER');
     });
+
+    test('File 2 Access Model & Permissions Verification', () {
+      final owner = UserModel(
+        id: 'owner_123',
+        authUid: 'owner_123',
+        role: UserRole.owner,
+        ownerId: 'owner_123',
+        name: 'Raj Owner',
+        email: 'raj@example.com',
+        mobile: '9876543210',
+        status: 'active',
+      );
+
+      // Owner has unconditional access across tenant
+      expect(owner.hasPermission(AppPermissions.manageTeam), true);
+      expect(owner.hasPermission(AppPermissions.manageLicense), true);
+      expect(owner.canAccessBusiness('biz_any'), true);
+      expect(owner.canAccessBranch('branch_any'), true);
+      expect(owner.isActive, true);
+
+      final manager = UserModel(
+        id: 'mgr_456',
+        authUid: 'mgr_456',
+        role: UserRole.manager,
+        ownerId: 'owner_123',
+        name: 'John Manager',
+        email: 'john@example.com',
+        mobile: '9876543211',
+        status: 'active',
+        allowedBusinessIds: ['biz_1'],
+        allowedBranchIds: ['branch_1_a'],
+        permissions: [AppPermissions.viewDashboard, AppPermissions.viewReviews],
+      );
+
+      // Manager has strictly scoped access
+      expect(manager.hasPermission(AppPermissions.viewReviews), true);
+      expect(manager.hasPermission(AppPermissions.manageTeam), false);
+      expect(manager.hasPermission(AppPermissions.manageLicense), false);
+      expect(manager.canAccessBusiness('biz_1'), true);
+      expect(manager.canAccessBusiness('biz_2'), false);
+      expect(manager.canAccessBranch('branch_1_a'), true);
+      expect(manager.canAccessBranch('branch_1_b'), false);
+
+      // Deactivation check
+      final deactivatedUser = UserModel(
+        id: 'm_789',
+        authUid: 'm_789',
+        role: UserRole.manager,
+        ownerId: 'owner_123',
+        name: 'Ex-Employee',
+        email: 'ex@example.com',
+        mobile: '9876543212',
+        status: 'deactivated',
+      );
+      expect(deactivatedUser.isActive, false);
+    });
   });
 }
