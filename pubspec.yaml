@@ -1,0 +1,49 @@
+name: reviewflow
+description: "ReviewFlow — Production-ready cross-platform mobile SaaS for customer review and feedback management."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State Management
+  flutter_riverpod: ^2.5.1
+
+  # Firebase Ecosystem
+  firebase_core: ^3.6.0
+  firebase_auth: ^5.3.1
+  cloud_firestore: ^5.4.4
+  firebase_storage: ^12.3.2
+  firebase_messaging: ^15.1.3
+
+  # QR Code Generation & Display
+  qr_flutter: ^4.1.0
+
+  # Reporting & Document Exporting
+  pdf: ^3.11.1
+  printing: ^5.13.2
+  excel: ^4.0.6
+  csv: ^6.0.0
+
+  # Charts & Visual Analytics
+  fl_chart: ^0.69.0
+
+  # Utilities
+  intl: ^0.19.0
+  crypto: ^3.0.3
+  uuid: ^4.5.1
+  share_plus: ^10.1.1
+  path_provider: ^2.1.4
+  google_fonts: ^6.2.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true

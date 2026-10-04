@@ -1,62 +1,229 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Helper function to safely get the current user's brandId
-    function getUserBrandId() {
-      return (request.auth != null && exists(/databases/$(database)/documents/users/$(request.auth.uid))) 
-        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.brandId 
-        : null;
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
     }
 
-    // Feedback Collection: 
-    match /feedbacks/{feedbackId} {
-      // Anyone can create (QR code scans)
-      allow create: if true;
-      // Only users who belong to the same brand can read it
-      allow read: if request.auth != null && resource.data.brandId == getUserBrandId();
-      allow update, delete: if false;
-    }
-
-    // User Collection:
-    match /users/{userId} {
-      // Users can only read and write their own data
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-    }
-
-    // Brands Collection:
-    match /brands/{brandId} {
-      // Anyone can read brands so managers can search for them
-      allow read: if true;
-      // Only the owner can create, update, or delete their brand
-      allow create: if request.auth != null && request.resource.data.ownerUid == request.auth.uid;
-      allow update, delete: if request.auth != null && resource.data.ownerUid == request.auth.uid;
-    }
-
-    // Branches Collection:
-    match /branches/{branchId} {
-      // Must belong to the brand to create or delete
-      allow create: if request.auth != null && request.resource.data.brandId == getUserBrandId();
-      allow delete: if request.auth != null && resource.data.brandId == getUserBrandId();
-      
-      // Anyone can read branches so managers can pick their branch
-      allow read: if true;
-      
-      // Allow the brand owner to update, OR allow a new manager to claim an unclaimed branch
-      allow update: if request.auth != null && (
-        resource.data.brandId == getUserBrandId() ||
-        (resource.data.managerUid == null && 
-         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['managerUid']) &&
-         request.resource.data.managerUid == request.auth.uid)
+    function isSuperAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.role == 'SUPER_ADMIN' ||
+        request.auth.uid == 'super_admin_reviewflow'
       );
     }
 
-    // Review Requests Collection:
-    match /review_requests/{requestId} {
-      allow read: if request.auth != null && resource.data.brandId == getUserBrandId();
-      allow create: if request.auth != null && request.resource.data.brandId == getUserBrandId();
-      allow update: if request.auth != null && resource.data.brandId == getUserBrandId();
-      allow delete: if false;
+    function isTenantOwner(ownerId) {
+      return isAuthenticated() && request.auth.uid == ownerId;
+    }
+
+    // USERS COLLECTION
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (
+        request.auth.uid == userId ||
+        resource.data.owner_id == request.auth.uid ||
+        isSuperAdmin()
+      );
+      // Owner can create/update team members under their owner_id; users can update their own profile
+      allow create: if isAuthenticated() && (
+        request.auth.uid == userId ||
+        request.resource.data.owner_id == request.auth.uid ||
+        isSuperAdmin()
+      );
+      allow update: if isAuthenticated() && (
+        request.auth.uid == userId ||
+        resource.data.owner_id == request.auth.uid ||
+        isSuperAdmin()
+      );
+      allow delete: if isSuperAdmin();
+    }
+
+    // BUSINESSES COLLECTION
+    match /businesses/{businessId} {
+      allow read: if isAuthenticated() && (
+        resource.data.owner_id == request.auth.uid ||
+        isSuperAdmin()
+      );
+      allow create: if isAuthenticated() && (
+        request.resource.data.owner_id == request.auth.uid ||
+        isSuperAdmin()
+      );
+      allow update: if isAuthenticated() && (
+        resource.data.owner_id == request.auth.uid ||
+        isSuperAdmin()
+      );
+      // Soft-delete/archive only; no hard delete
+      allow delete: if isSuperAdmin();
+    }
+
+    // BRANCHES COLLECTION
+    // Creation is strictly handled via createBranch Cloud Function to enforce atomic limits!
+    match /branches/{branchId} {
+      allow read: if isAuthenticated() && (
+        resource.data.owner_id == request.auth.uid ||
+        isSuperAdmin()
+      );
+      allow create: if isSuperAdmin(); // Normal tenants create via Cloud Function
+      allow update: if isAuthenticated() && (
+        resource.data.owner_id == request.auth.uid ||
+        isSuperAdmin()
+      );
+      allow delete: if isSuperAdmin();
+    }
+
+    // USER ACCESS (RBAC assignments)
+    match /user_access/{accessId} {
+      allow read: if isAuthenticated() && (
+        resource.data.user_id == request.auth.uid ||
+        resource.data.owner_id == request.auth.uid ||
+        isSuperAdmin()
+      );
+      allow write: if isAuthenticated() && (
+        request.resource.data.owner_id == request.auth.uid ||
+        resource.data.owner_id == request.auth.uid ||
+        isSuperAdmin()
+      );
+    }
+
+    // REVIEW FORMS
+    match /review_forms/{formId} {
+      allow read: if isAuthenticated() && (
+        resource.data.owner_id == request.auth.uid ||
+        isSuperAdmin()
+      );
+      allow create, update: if isAuthenticated() && (
+        request.resource.data.owner_id == request.auth.uid ||
+        resource.data.owner_id == request.auth.uid ||
+        isSuperAdmin()
+      );
+      allow delete: if isSuperAdmin();
+    }
+
+    match /review_form_pages/{pageId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (
+        request.resource.data.owner_id == request.auth.uid ||
+        resource.data.owner_id == request.auth.uid ||
+        isSuperAdmin()
+      );
+    }
+
+    match /review_questions/{questionId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (
+        request.resource.data.owner_id == request.auth.uid ||
+        resource.data.owner_id == request.auth.uid ||
+        isSuperAdmin()
+      );
+    }
+
+    match /question_options/{optionId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() || isSuperAdmin();
+    }
+
+    // QR CODES
+    match /qr_codes/{qrId} {
+      allow read: if isAuthenticated() && (
+        resource.data.owner_id == request.auth.uid ||
+        isSuperAdmin()
+      );
+      allow write: if isAuthenticated() && (
+        request.resource.data.owner_id == request.auth.uid ||
+        resource.data.owner_id == request.auth.uid ||
+        isSuperAdmin()
+      );
+    }
+
+    // CUSTOMERS (Strictly isolated to tenant)
+    match /customers/{customerId} {
+      allow read: if isAuthenticated() && (
+        resource.data.owner_id == request.auth.uid ||
+        isSuperAdmin()
+      );
+      allow write: if false; // Written only via trusted backend
+    }
+
+    // REVIEWS (Strictly Immutable, Written ONLY via Cloud Functions)
+    match /reviews/{reviewId} {
+      allow read: if isAuthenticated() && (
+        resource.data.owner_id == request.auth.uid ||
+        isSuperAdmin()
+      );
+      allow create, update, delete: if false; // Only Cloud Functions can ingest reviews!
+    }
+
+    // REVIEW ANSWERS (Immutable, Written ONLY via Cloud Functions)
+    match /review_answers/{answerId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if false; // Only Cloud Functions can write answers!
+    }
+
+    // LICENSE PLANS
+    match /license_plans/{planId} {
+      allow read: if isAuthenticated();
+      allow write: if isSuperAdmin();
+    }
+
+    // LICENSES (Mutated only via Cloud Functions on verification or trial grant)
+    match /licenses/{licenseId} {
+      allow read: if isAuthenticated() && (
+        resource.data.owner_id == request.auth.uid ||
+        isSuperAdmin()
+      );
+      allow write: if false; // Trusted backend only
+    }
+
+    // PAYMENTS (Mutated only via Cloud Functions on Razorpay verification)
+    match /payments/{paymentId} {
+      allow read: if isAuthenticated() && (
+        resource.data.owner_id == request.auth.uid ||
+        isSuperAdmin()
+      );
+      allow write: if false; // Trusted backend only
+    }
+
+    // NOTIFICATIONS
+    match /notifications/{notifId} {
+      allow read: if isAuthenticated() && (
+        resource.data.owner_id == request.auth.uid ||
+        isSuperAdmin()
+      );
+      allow write: if false; // Only Cloud Functions create notifications
+    }
+
+    match /notification_recipients/{recId} {
+      allow read: if isAuthenticated() && (
+        resource.data.user_id == request.auth.uid ||
+        resource.data.owner_id == request.auth.uid ||
+        isSuperAdmin()
+      );
+      allow update: if isAuthenticated() && resource.data.user_id == request.auth.uid;
+      allow create, delete: if false;
+    }
+
+    // PUSH DEVICES
+    match /push_devices/{deviceId} {
+      allow read, write: if isAuthenticated() && (
+        request.auth.uid == request.resource.data.user_id ||
+        (resource != null && request.auth.uid == resource.data.user_id)
+      );
+    }
+
+    // AUDIT LOGS (Immutable, Written only by Cloud Functions)
+    match /audit_logs/{logId} {
+      allow read: if isAuthenticated() && (
+        resource.data.owner_id == request.auth.uid ||
+        isSuperAdmin()
+      );
+      allow write: if false;
+    }
+
+    // PLATFORM SETTINGS
+    match /platform_settings/{settingId} {
+      allow read: if isAuthenticated();
+      allow write: if isSuperAdmin();
     }
   }
 }

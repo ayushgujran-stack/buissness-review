@@ -1,0 +1,26 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Public branch/business branding assets (logos, QR art)
+    match /public/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null 
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+    
+    // Business & Branch assets uploaded by authorized tenant users
+    match /tenants/{ownerId}/{businessId}/{allPaths=**} {
+      allow read: if true; // Publicly readable for customer-facing branch pages
+      allow write: if request.auth != null
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // Reports generated for Owners & Managers (PDF, Excel, CSV)
+    match /reports/{ownerId}/{allPaths=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+  }
+}
