@@ -2,7 +2,10 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper functions
+    // ==========================================
+    // AUTHENTICATION & AUTHORIZATION HELPERS
+    // ==========================================
+
     function isAuthenticated() {
       return request.auth != null;
     }
@@ -14,18 +17,35 @@ service cloud.firestore {
       );
     }
 
-    function isTenantOwner(ownerId) {
+    function isOwner(ownerId) {
       return isAuthenticated() && request.auth.uid == ownerId;
     }
 
-    // USERS COLLECTION
+    function getUserDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function isStaffMember(ownerId) {
+      return isAuthenticated() &&
+        getUserDoc().data.owner_id == ownerId &&
+        getUserDoc().data.status == 'active';
+    }
+
+    function isTenantUser(ownerId) {
+      return isOwner(ownerId) || isStaffMember(ownerId) || isSuperAdmin();
+    }
+
+    // ==========================================
+    // 1. USERS COLLECTION
+    // ==========================================
     match /users/{userId} {
+      // Users can read themselves; Owners can read their staff; SuperAdmin can read all
       allow read: if isAuthenticated() && (
         request.auth.uid == userId ||
         resource.data.owner_id == request.auth.uid ||
         isSuperAdmin()
       );
-      // Owner can create/update team members under their owner_id; users can update their own profile
+      // Owner can create/update team members under their owner_id; users can update own profile
       allow create: if isAuthenticated() && (
         request.auth.uid == userId ||
         request.resource.data.owner_id == request.auth.uid ||
@@ -39,12 +59,11 @@ service cloud.firestore {
       allow delete: if isSuperAdmin();
     }
 
-    // BUSINESSES COLLECTION
+    // ==========================================
+    // 2. BUSINESSES COLLECTION
+    // ==========================================
     match /businesses/{businessId} {
-      allow read: if isAuthenticated() && (
-        resource.data.owner_id == request.auth.uid ||
-        isSuperAdmin()
-      );
+      allow read: if isTenantUser(resource.data.owner_id);
       allow create: if isAuthenticated() && (
         request.resource.data.owner_id == request.auth.uid ||
         isSuperAdmin()
@@ -53,18 +72,17 @@ service cloud.firestore {
         resource.data.owner_id == request.auth.uid ||
         isSuperAdmin()
       );
-      // Soft-delete/archive only; no hard delete
       allow delete: if isSuperAdmin();
     }
 
-    // BRANCHES COLLECTION
-    // Creation is strictly handled via createBranch Cloud Function to enforce atomic limits!
+    // ==========================================
+    // 3. BRANCHES COLLECTION
+    // Creation is strictly handled via Cloud Function (createBranch)
+    // to enforce atomic multi-business branch limit transaction!
+    // ==========================================
     match /branches/{branchId} {
-      allow read: if isAuthenticated() && (
-        resource.data.owner_id == request.auth.uid ||
-        isSuperAdmin()
-      );
-      allow create: if isSuperAdmin(); // Normal tenants create via Cloud Function
+      allow read: if isTenantUser(resource.data.owner_id);
+      allow create: if isSuperAdmin(); // Normal tenants create exclusively via createBranch Cloud Function
       allow update: if isAuthenticated() && (
         resource.data.owner_id == request.auth.uid ||
         isSuperAdmin()
@@ -72,7 +90,9 @@ service cloud.firestore {
       allow delete: if isSuperAdmin();
     }
 
-    // USER ACCESS (RBAC assignments)
+    // ==========================================
+    // 4. USER ACCESS (RBAC assignments)
+    // ==========================================
     match /user_access/{accessId} {
       allow read: if isAuthenticated() && (
         resource.data.user_id == request.auth.uid ||
@@ -86,12 +106,11 @@ service cloud.firestore {
       );
     }
 
-    // REVIEW FORMS
+    // ==========================================
+    // 5. REVIEW FORMS & QUESTIONS
+    // ==========================================
     match /review_forms/{formId} {
-      allow read: if isAuthenticated() && (
-        resource.data.owner_id == request.auth.uid ||
-        isSuperAdmin()
-      );
+      allow read: if isTenantUser(resource.data.owner_id);
       allow create, update: if isAuthenticated() && (
         request.resource.data.owner_id == request.auth.uid ||
         resource.data.owner_id == request.auth.uid ||
@@ -123,12 +142,11 @@ service cloud.firestore {
       allow write: if isAuthenticated() || isSuperAdmin();
     }
 
-    // QR CODES
+    // ==========================================
+    // 6. QR CODES
+    // ==========================================
     match /qr_codes/{qrId} {
-      allow read: if isAuthenticated() && (
-        resource.data.owner_id == request.auth.uid ||
-        isSuperAdmin()
-      );
+      allow read: if isTenantUser(resource.data.owner_id);
       allow write: if isAuthenticated() && (
         request.resource.data.owner_id == request.auth.uid ||
         resource.data.owner_id == request.auth.uid ||
@@ -136,61 +154,56 @@ service cloud.firestore {
       );
     }
 
-    // CUSTOMERS (Strictly isolated to tenant)
+    // ==========================================
+    // 7. CUSTOMERS (Strictly isolated to tenant)
+    // ==========================================
     match /customers/{customerId} {
-      allow read: if isAuthenticated() && (
-        resource.data.owner_id == request.auth.uid ||
-        isSuperAdmin()
-      );
-      allow write: if false; // Written only via trusted backend
+      allow read: if isTenantUser(resource.data.owner_id);
+      allow write: if false; // Ingested solely via trusted backend functions
     }
 
-    // REVIEWS (Strictly Immutable, Written ONLY via Cloud Functions)
+    // ==========================================
+    // 8. REVIEWS & REVIEW ANSWERS (Strictly Immutable)
+    // Written ONLY via Cloud Functions; Deletion forbidden!
+    // ==========================================
     match /reviews/{reviewId} {
-      allow read: if isAuthenticated() && (
-        resource.data.owner_id == request.auth.uid ||
-        isSuperAdmin()
-      );
-      allow create, update, delete: if false; // Only Cloud Functions can ingest reviews!
+      allow read: if isTenantUser(resource.data.owner_id);
+      allow create, update, delete: if false; // Ingested solely via submitCustomerReview Cloud Function
     }
 
-    // REVIEW ANSWERS (Immutable, Written ONLY via Cloud Functions)
     match /review_answers/{answerId} {
       allow read: if isAuthenticated();
-      allow create, update, delete: if false; // Only Cloud Functions can write answers!
+      allow create, update, delete: if false; // Ingested solely via submitCustomerReview Cloud Function
     }
 
-    // LICENSE PLANS
+    // ==========================================
+    // 9. LICENSE PLANS & LICENSES
+    // Client cannot directly modify license limits, status, or expiry!
+    // ==========================================
     match /license_plans/{planId} {
       allow read: if isAuthenticated();
       allow write: if isSuperAdmin();
     }
 
-    // LICENSES (Mutated only via Cloud Functions on verification or trial grant)
     match /licenses/{licenseId} {
-      allow read: if isAuthenticated() && (
-        resource.data.owner_id == request.auth.uid ||
-        isSuperAdmin()
-      );
-      allow write: if false; // Trusted backend only
+      allow read: if isTenantUser(resource.data.owner_id);
+      allow write: if false; // Managed exclusively via Cloud Functions
     }
 
-    // PAYMENTS (Mutated only via Cloud Functions on Razorpay verification)
+    // ==========================================
+    // 10. PAYMENTS (Razorpay transactions)
+    // ==========================================
     match /payments/{paymentId} {
-      allow read: if isAuthenticated() && (
-        resource.data.owner_id == request.auth.uid ||
-        isSuperAdmin()
-      );
-      allow write: if false; // Trusted backend only
+      allow read: if isTenantUser(resource.data.owner_id);
+      allow write: if false; // Verified and recorded exclusively via Cloud Functions
     }
 
-    // NOTIFICATIONS
+    // ==========================================
+    // 11. NOTIFICATIONS & RECIPIENTS
+    // ==========================================
     match /notifications/{notifId} {
-      allow read: if isAuthenticated() && (
-        resource.data.owner_id == request.auth.uid ||
-        isSuperAdmin()
-      );
-      allow write: if false; // Only Cloud Functions create notifications
+      allow read: if isTenantUser(resource.data.owner_id);
+      allow write: if false; // Generated exclusively by Cloud Functions
     }
 
     match /notification_recipients/{recId} {
@@ -203,7 +216,9 @@ service cloud.firestore {
       allow create, delete: if false;
     }
 
-    // PUSH DEVICES
+    // ==========================================
+    // 12. PUSH DEVICES (FCM device tokens)
+    // ==========================================
     match /push_devices/{deviceId} {
       allow read, write: if isAuthenticated() && (
         request.auth.uid == request.resource.data.user_id ||
@@ -211,16 +226,17 @@ service cloud.firestore {
       );
     }
 
-    // AUDIT LOGS (Immutable, Written only by Cloud Functions)
+    // ==========================================
+    // 13. AUDIT LOGS (Immutable Compliance Journal)
+    // ==========================================
     match /audit_logs/{logId} {
-      allow read: if isAuthenticated() && (
-        resource.data.owner_id == request.auth.uid ||
-        isSuperAdmin()
-      );
-      allow write: if false;
+      allow read: if isTenantUser(resource.data.owner_id);
+      allow write: if false; // Generated exclusively by Cloud Functions / backend transactions
     }
 
-    // PLATFORM SETTINGS
+    // ==========================================
+    // 14. PLATFORM SETTINGS
+    // ==========================================
     match /platform_settings/{settingId} {
       allow read: if isAuthenticated();
       allow write: if isSuperAdmin();
