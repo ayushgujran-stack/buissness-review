@@ -67,7 +67,88 @@ class DashboardScreen extends ConsumerWidget {
 
               // Metric Summary Cards
               reviewsAsync.when(
-                data: (reviews) => _buildMetricsGrid(reviews),
+                data: (reviews) {
+                  final poorReviews = reviews.where((r) => r.classification == 'POOR').toList();
+                  final branches = branchesAsync.value ?? [];
+
+                  // Calculate Top Performing Branch
+                  BranchModel? topBranch;
+                  double topBranchScore = 0;
+                  for (final br in branches) {
+                    final brReviews = reviews.where((r) => r.branchId == br.id).toList();
+                    if (brReviews.isNotEmpty) {
+                      final avg = brReviews.map((r) => r.averageScore).reduce((a, b) => a + b) / brReviews.length;
+                      if (avg > topBranchScore) {
+                        topBranchScore = avg;
+                        topBranch = br;
+                      }
+                    }
+                  }
+
+                  return Column(
+                    children: [
+                      // Immediate Answer 4: Poor Reviews Alert Banner
+                      if (poorReviews.isNotEmpty) ...[
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: AppColors.poorLight,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: AppColors.poor.withValues(alpha: 0.3)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.warning_amber_rounded, color: AppColors.poor, size: 22),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  'Attention: ${poorReviews.length} poor review${poorReviews.length > 1 ? "s" : ""} require operational review.',
+                                  style: const TextStyle(color: AppColors.poor, fontWeight: FontWeight.bold, fontSize: 13),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+
+                      _buildMetricsGrid(reviews),
+
+                      // Immediate Answer 3: Top Performing Branch
+                      if (topBranch != null) ...[
+                        const SizedBox(height: 12),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: AppColors.goodLight,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                children: [
+                                  const Icon(Icons.emoji_events_outlined, color: AppColors.good, size: 20),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Top Branch: ${topBranch.name}',
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.good),
+                                  ),
+                                ],
+                              ),
+                              Text(
+                                '${topBranchScore.toStringAsFixed(1)} / 3.0',
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.good),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  );
+                },
                 loading: () => const Center(child: Padding(
                   padding: EdgeInsets.all(24),
                   child: CircularProgressIndicator(),
