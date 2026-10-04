@@ -8,8 +8,7 @@ class EnvConfig {
 
   // Emulator host configuration (10.0.2.2 for Android emulator, localhost for iOS/Web/macOS)
   static String get emulatorHost {
-    // If running in web or desktop/macOS
-    return '127.0.0.1';
+    return 'localhost';
   }
 
   static const int authEmulatorPort = 9099;
@@ -20,12 +19,13 @@ class EnvConfig {
   // Razorpay Test Keys
   static const String razorpayKeyId = 'rzp_test_reviewflow_mock';
 
-  // Live Firebase Configuration fallback (populated from Firebase Console)
-  static const String firebaseApiKey = 'AIzaSyMockKeyForReviewFlowTesting12345';
-  static const String firebaseAppId = '1:1234567890:android:abcdef1234567890';
-  static const String firebaseMessagingSenderId = '1234567890';
-  static const String firebaseProjectId = 'reviewflow-production';
-  static const String firebaseStorageBucket = 'reviewflow-production.appspot.com';
+  // Live Firebase Configuration fallback (populated from Firebase Console or local demo mode)
+  static const String firebaseApiKey = 'AIzaSyReviewFlowTestingKeyMock123456789';
+  static const String firebaseAppId = '1:123456789012:web:abcdef1234567890abcdef';
+  static const String firebaseMessagingSenderId = '123456789012';
+  static const String firebaseProjectId = 'demo-reviewflow';
+  static const String firebaseStorageBucket = 'demo-reviewflow.appspot.com';
+  static const String firebaseAuthDomain = 'demo-reviewflow.firebaseapp.com';
 
   // Deterministic Scoring Thresholds
   static const double poorMaxScore = 1.74;

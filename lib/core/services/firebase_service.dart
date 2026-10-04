@@ -20,6 +20,7 @@ class FirebaseService {
             messagingSenderId: EnvConfig.firebaseMessagingSenderId,
             projectId: EnvConfig.firebaseProjectId,
             storageBucket: EnvConfig.firebaseStorageBucket,
+            authDomain: EnvConfig.firebaseAuthDomain,
           ),
         );
       } else {
