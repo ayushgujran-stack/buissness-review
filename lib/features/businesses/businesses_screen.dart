@@ -114,12 +114,33 @@ class _BusinessesScreenState extends ConsumerState<BusinessesScreen> {
                                   status: 'active',
                                 );
 
-                                final nav = Navigator.of(ctx);
-                                await docRef.set(newBiz.toMap()..['created_at'] = now..['updated_at'] = now);
+                                final messenger = ScaffoldMessenger.of(context);
+                                try {
+                                  final nav = Navigator.of(ctx);
+                                  await docRef.set(newBiz.toMap()..['created_at'] = now..['updated_at'] = now);
 
-                                if (mounted) {
-                                  nav.pop();
-                                  ref.invalidate(businessesStreamProvider);
+                                  if (mounted) {
+                                    nav.pop();
+                                    ref.invalidate(businessesStreamProvider);
+                                    // If no business was selected, select the newly created one
+                                    ref.read(selectedBusinessProvider.notifier).state ??= newBiz;
+                                    messenger.showSnackBar(
+                                      SnackBar(
+                                        content: Text('Business "${nameCtrl.text.trim()}" created successfully!'),
+                                        backgroundColor: AppColors.good,
+                                      ),
+                                    );
+                                  }
+                                } catch (e) {
+                                  setModalState(() => isSaving = false);
+                                  if (mounted) {
+                                    messenger.showSnackBar(
+                                      SnackBar(
+                                        content: Text('Failed to save business: $e'),
+                                        backgroundColor: AppColors.poor,
+                                      ),
+                                    );
+                                  }
                                 }
                               },
                         child: isSaving

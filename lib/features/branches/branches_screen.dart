@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../core/models/models.dart';
 import '../../core/providers/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/context_switchers.dart';
@@ -16,16 +17,42 @@ class BranchesScreen extends ConsumerStatefulWidget {
 
 class _BranchesScreenState extends ConsumerState<BranchesScreen> {
   void _openAddBranchDialog() {
-    final selectedBiz = ref.read(selectedBusinessProvider);
-    final license = ref.read(activeLicenseProvider).value;
-    final branches = ref.read(branchesStreamProvider).value ?? [];
+    final businesses = ref.read(businessesStreamProvider).value ?? [];
+    BusinessModel? targetBiz = ref.read(selectedBusinessProvider);
 
-    if (selectedBiz == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select a specific business first before adding a branch.')),
+    if (targetBiz == null && businesses.isNotEmpty) {
+      targetBiz = businesses.first;
+      // Pre-select the first business
+      ref.read(selectedBusinessProvider.notifier).state = targetBiz;
+    }
+
+    if (targetBiz == null) {
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('No Business Found'),
+          content: const Text('You must create a business first before adding branches.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                // Switch to Businesses tab
+                DefaultTabController.of(context).animateTo(1);
+              },
+              child: const Text('Create Business'),
+            ),
+          ],
+        ),
       );
       return;
     }
+
+    final license = ref.read(activeLicenseProvider).value;
+    final branches = ref.read(branchesStreamProvider).value ?? [];
 
     if (license != null && branches.length >= license.maximumBranches) {
       showDialog(
@@ -50,6 +77,7 @@ class _BranchesScreenState extends ConsumerState<BranchesScreen> {
     final addressCtrl = TextEditingController();
     final phoneCtrl = TextEditingController();
     String selectedColor = '#2563EB';
+    BusinessModel selectedBiz = targetBiz;
     final formKey = GlobalKey<FormState>();
     bool isSaving = false;
 
@@ -81,6 +109,19 @@ class _BranchesScreenState extends ConsumerState<BranchesScreen> {
                         'Add Branch to ${selectedBiz.name}',
                         style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                       ),
+                      if (businesses.length > 1) ...[
+                        const SizedBox(height: 12),
+                        DropdownButtonFormField<BusinessModel>(
+                          initialValue: selectedBiz,
+                          decoration: const InputDecoration(labelText: 'Target Business'),
+                          items: businesses.map((b) {
+                            return DropdownMenuItem(value: b, child: Text(b.name));
+                          }).toList(),
+                          onChanged: (b) {
+                            if (b != null) setModalState(() => selectedBiz = b);
+                          },
+                        ),
+                      ],
                       const SizedBox(height: 16),
                       TextFormField(
                         controller: nameCtrl,
@@ -129,89 +170,110 @@ class _BranchesScreenState extends ConsumerState<BranchesScreen> {
                                 if (!formKey.currentState!.validate()) return;
                                 setModalState(() => isSaving = true);
 
-                                final user = ref.read(currentUserProfileProvider).value;
-                                if (user == null) return;
+                                final messenger = ScaffoldMessenger.of(context);
+                                try {
+                                  final user = ref.read(currentUserProfileProvider).value;
+                                  if (user == null) {
+                                    throw Exception('User profile not loaded.');
+                                  }
 
-                                final now = DateTime.now().toUtc().toIso8601String();
-                                final branchRef = FirebaseFirestore.instance.collection('branches').doc();
-                                final qrRef = FirebaseFirestore.instance.collection('qr_codes').doc();
-                                final formRef = FirebaseFirestore.instance.collection('review_forms').doc();
-                                final pageRef = FirebaseFirestore.instance.collection('review_form_pages').doc();
+                                  final now = DateTime.now().toUtc().toIso8601String();
+                                  final branchRef = FirebaseFirestore.instance.collection('branches').doc();
+                                  final qrRef = FirebaseFirestore.instance.collection('qr_codes').doc();
+                                  final formRef = FirebaseFirestore.instance.collection('review_forms').doc();
+                                  final pageRef = FirebaseFirestore.instance.collection('review_form_pages').doc();
 
-                                final token = 'token_${branchRef.id.substring(0, 10)}';
+                                  final token = 'token_${branchRef.id.substring(0, 10)}';
 
-                                final batch = FirebaseFirestore.instance.batch();
+                                  final batch = FirebaseFirestore.instance.batch();
 
-                                // 1. Create branch
-                                batch.set(branchRef, {
-                                  'id': branchRef.id,
-                                  'owner_id': user.ownerId,
-                                  'business_id': selectedBiz.id,
-                                  'name': nameCtrl.text.trim(),
-                                  'address': addressCtrl.text.trim(),
-                                  'phone': phoneCtrl.text.trim(),
-                                  'theme_color': selectedColor,
-                                  'status': 'active',
-                                  'created_at': now,
-                                  'updated_at': now,
-                                });
+                                  // 1. Create branch
+                                  batch.set(branchRef, {
+                                    'id': branchRef.id,
+                                    'owner_id': user.ownerId,
+                                    'business_id': selectedBiz.id,
+                                    'name': nameCtrl.text.trim(),
+                                    'address': addressCtrl.text.trim(),
+                                    'phone': phoneCtrl.text.trim(),
+                                    'theme_color': selectedColor,
+                                    'status': 'active',
+                                    'created_at': now,
+                                    'updated_at': now,
+                                  });
 
-                                // 2. Create QR record
-                                batch.set(qrRef, {
-                                  'id': qrRef.id,
-                                  'owner_id': user.ownerId,
-                                  'business_id': selectedBiz.id,
-                                  'branch_id': branchRef.id,
-                                  'secure_token': token,
-                                  'status': 'active',
-                                  'created_at': now,
-                                });
+                                  // 2. Create QR record
+                                  batch.set(qrRef, {
+                                    'id': qrRef.id,
+                                    'owner_id': user.ownerId,
+                                    'business_id': selectedBiz.id,
+                                    'branch_id': branchRef.id,
+                                    'secure_token': token,
+                                    'status': 'active',
+                                    'created_at': now,
+                                  });
 
-                                // 3. Create Default Published Review Form
-                                batch.set(formRef, {
-                                  'id': formRef.id,
-                                  'owner_id': user.ownerId,
-                                  'business_id': selectedBiz.id,
-                                  'branch_id': branchRef.id,
-                                  'name': '${nameCtrl.text.trim()} Experience Form',
-                                  'status': 'published',
-                                  'published_version': 1,
-                                  'created_at': now,
-                                  'updated_at': now,
-                                  'published_at': now,
-                                });
+                                  // 3. Create Default Published Review Form
+                                  batch.set(formRef, {
+                                    'id': formRef.id,
+                                    'owner_id': user.ownerId,
+                                    'business_id': selectedBiz.id,
+                                    'branch_id': branchRef.id,
+                                    'name': '${nameCtrl.text.trim()} Experience Form',
+                                    'status': 'published',
+                                    'published_version': 1,
+                                    'created_at': now,
+                                    'updated_at': now,
+                                    'published_at': now,
+                                  });
 
-                                batch.set(pageRef, {
-                                  'id': pageRef.id,
-                                  'owner_id': user.ownerId,
-                                  'form_id': formRef.id,
-                                  'page_number': 1,
-                                  'title': 'Overall Experience',
-                                  'display_order': 1,
-                                });
+                                  batch.set(pageRef, {
+                                    'id': pageRef.id,
+                                    'owner_id': user.ownerId,
+                                    'form_id': formRef.id,
+                                    'page_number': 1,
+                                    'title': 'Overall Experience',
+                                    'display_order': 1,
+                                  });
 
-                                // Default Questions
-                                final q1Ref = FirebaseFirestore.instance.collection('review_questions').doc();
-                                batch.set(q1Ref, {
-                                  'id': q1Ref.id,
-                                  'owner_id': user.ownerId,
-                                  'form_id': formRef.id,
-                                  'page_id': pageRef.id,
-                                  'text': 'Rate your overall experience',
-                                  'type': 'star',
-                                  'required': true,
-                                  'display_order': 1,
-                                  'active': true,
-                                  'created_at': now,
-                                  'updated_at': now,
-                                });
+                                  // Default Questions
+                                  final q1Ref = FirebaseFirestore.instance.collection('review_questions').doc();
+                                  batch.set(q1Ref, {
+                                    'id': q1Ref.id,
+                                    'owner_id': user.ownerId,
+                                    'form_id': formRef.id,
+                                    'page_id': pageRef.id,
+                                    'text': 'Rate your overall experience',
+                                    'type': 'star',
+                                    'required': true,
+                                    'display_order': 1,
+                                    'active': true,
+                                    'created_at': now,
+                                    'updated_at': now,
+                                  });
 
-                                final nav = Navigator.of(ctx);
-                                await batch.commit();
+                                  final nav = Navigator.of(ctx);
+                                  await batch.commit();
 
-                                if (mounted) {
-                                  nav.pop();
-                                  ref.invalidate(branchesStreamProvider);
+                                  if (mounted) {
+                                    nav.pop();
+                                    ref.invalidate(branchesStreamProvider);
+                                    messenger.showSnackBar(
+                                      SnackBar(
+                                        content: Text('Branch "${nameCtrl.text.trim()}" created successfully!'),
+                                        backgroundColor: AppColors.good,
+                                      ),
+                                    );
+                                  }
+                                } catch (e) {
+                                  setModalState(() => isSaving = false);
+                                  if (mounted) {
+                                    messenger.showSnackBar(
+                                      SnackBar(
+                                        content: Text('Failed to create branch: $e'),
+                                        backgroundColor: AppColors.poor,
+                                      ),
+                                    );
+                                  }
                                 }
                               },
                         child: isSaving

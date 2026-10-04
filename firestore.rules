@@ -12,7 +12,7 @@ service cloud.firestore {
 
     function isSuperAdmin() {
       return isAuthenticated() && (
-        request.auth.token.role == 'SUPER_ADMIN' ||
+        ('role' in request.auth.token && request.auth.token.role == 'SUPER_ADMIN') ||
         request.auth.uid == 'super_admin_reviewflow'
       );
     }
@@ -21,12 +21,17 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == ownerId;
     }
 
+    function userDocExists() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
     function getUserDoc() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid));
     }
 
     function isStaffMember(ownerId) {
       return isAuthenticated() &&
+        userDocExists() &&
         getUserDoc().data.owner_id == ownerId &&
         getUserDoc().data.status == 'active';
     }
@@ -77,12 +82,14 @@ service cloud.firestore {
 
     // ==========================================
     // 3. BRANCHES COLLECTION
-    // Creation is strictly handled via Cloud Function (createBranch)
-    // to enforce atomic multi-business branch limit transaction!
+    // Enforces tenant scoping and owner authorization
     // ==========================================
     match /branches/{branchId} {
       allow read: if isTenantUser(resource.data.owner_id);
-      allow create: if isSuperAdmin(); // Normal tenants create exclusively via createBranch Cloud Function
+      allow create: if isAuthenticated() && (
+        request.resource.data.owner_id == request.auth.uid ||
+        isSuperAdmin()
+      );
       allow update: if isAuthenticated() && (
         resource.data.owner_id == request.auth.uid ||
         isSuperAdmin()
@@ -178,7 +185,6 @@ service cloud.firestore {
 
     // ==========================================
     // 9. LICENSE PLANS & LICENSES
-    // Client cannot directly modify license limits, status, or expiry!
     // ==========================================
     match /license_plans/{planId} {
       allow read: if isAuthenticated();
@@ -187,7 +193,15 @@ service cloud.firestore {
 
     match /licenses/{licenseId} {
       allow read: if isTenantUser(resource.data.owner_id);
-      allow write: if false; // Managed exclusively via Cloud Functions
+      allow create: if isAuthenticated() && (
+        request.resource.data.owner_id == request.auth.uid ||
+        isSuperAdmin()
+      );
+      allow update: if isAuthenticated() && (
+        resource.data.owner_id == request.auth.uid ||
+        isSuperAdmin()
+      );
+      allow delete: if isSuperAdmin();
     }
 
     // ==========================================
@@ -231,7 +245,11 @@ service cloud.firestore {
     // ==========================================
     match /audit_logs/{logId} {
       allow read: if isTenantUser(resource.data.owner_id);
-      allow write: if false; // Generated exclusively by Cloud Functions / backend transactions
+      allow create: if isAuthenticated() && (
+        request.resource.data.owner_id == request.auth.uid ||
+        isSuperAdmin()
+      );
+      allow update, delete: if false;
     }
 
     // ==========================================
