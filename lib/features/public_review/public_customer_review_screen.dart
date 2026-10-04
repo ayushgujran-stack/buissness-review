@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import '../../core/models/models.dart';
 import '../../core/theme/app_theme.dart';
 
@@ -145,9 +146,38 @@ class _PublicCustomerReviewScreenState extends State<PublicCustomerReviewScreen>
     setState(() => _isLoading = true);
 
     try {
-      final now = DateTime.now().toUtc().toIso8601String();
       final cleanMobile = _mobileController.text.trim();
       final cleanName = _nameController.text.trim().isNotEmpty ? _nameController.text.trim() : 'Guest Customer';
+
+      // 1. Attempt trusted Cloud Function submission first
+      try {
+        final formattedAnswers = _questions.map((q) {
+          return {
+            'question_id': q.id,
+            'answer_value': _answers[q.id],
+          };
+        }).toList();
+
+        final callable = FirebaseFunctions.instance.httpsCallable('submitCustomerReview');
+        await callable.call({
+          'secureToken': widget.token,
+          'customerName': cleanName,
+          'customerMobile': cleanMobile,
+          'answers': formattedAnswers,
+        });
+
+        if (mounted) {
+          setState(() {
+            _isSubmitted = true;
+            _isLoading = false;
+          });
+          return;
+        }
+      } catch (cfError) {
+        // Fallback to client transaction if functions emulator is not attached or offline
+      }
+
+      final now = DateTime.now().toUtc().toIso8601String();
 
       // 1. Calculate deterministic scores: GOOD=3, OKAY=2, POOR=1
       double totalScore = 0;

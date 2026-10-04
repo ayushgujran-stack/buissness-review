@@ -5,6 +5,8 @@ import 'package:share_plus/share_plus.dart';
 import 'package:printing/printing.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'dart:math' as math;
+import 'package:crypto/crypto.dart';
 import '../../core/models/models.dart';
 import '../../core/theme/app_theme.dart';
 
@@ -50,10 +52,15 @@ class _QrManagementScreenState extends State<QrManagementScreen> {
     }
   }
 
+  Color _qrColor = Colors.black;
+
   Future<void> _regenerateToken() async {
     setState(() => _isLoading = true);
     final now = DateTime.now().toUtc().toIso8601String();
-    final newToken = 'token_${widget.branch.id.substring(0, 6)}_${DateTime.now().millisecondsSinceEpoch}';
+    
+    // Cryptographically secure token generation without exposing internal IDs
+    final rand = List<int>.generate(16, (i) => math.Random.secure().nextInt(256));
+    final newToken = 'qr_${sha256.convert(rand).toString().substring(0, 24)}';
 
     final ref = FirebaseFirestore.instance.collection('qr_codes').doc();
     await ref.set({
@@ -188,7 +195,33 @@ class _QrManagementScreenState extends State<QrManagementScreen> {
                             textAlign: TextAlign.center,
                             style: TextStyle(fontSize: 12, color: AppColors.textSecondaryLight),
                           ),
-                          const SizedBox(height: 24),
+                          const SizedBox(height: 16),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Text('QR Theme:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                              const SizedBox(width: 8),
+                              ...[
+                                Colors.black,
+                                Color(int.parse(widget.branch.themeColor.replaceFirst('#', '0xFF'))),
+                                const Color(0xFF1E3A8A), // Navy
+                                const Color(0xFF065F46), // Emerald
+                              ].map((c) => GestureDetector(
+                                    onTap: () => setState(() => _qrColor = c),
+                                    child: Container(
+                                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                                      width: 24,
+                                      height: 24,
+                                      decoration: BoxDecoration(
+                                        color: c,
+                                        shape: BoxShape.circle,
+                                        border: _qrColor == c ? Border.all(color: AppColors.brandPrimary, width: 2) : null,
+                                      ),
+                                    ),
+                                  )),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
                           Container(
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
@@ -206,6 +239,8 @@ class _QrManagementScreenState extends State<QrManagementScreen> {
                               data: _reviewUrl,
                               version: QrVersions.auto,
                               size: 200.0,
+                              eyeStyle: QrEyeStyle(eyeShape: QrEyeShape.square, color: _qrColor),
+                              dataModuleStyle: QrDataModuleStyle(dataModuleShape: QrDataModuleShape.square, color: _qrColor),
                             ),
                           ),
                           const SizedBox(height: 16),

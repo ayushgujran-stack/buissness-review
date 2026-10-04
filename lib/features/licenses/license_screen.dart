@@ -174,10 +174,67 @@ class _LicenseScreenState extends ConsumerState<LicenseScreen> {
             ),
             const SizedBox(height: 12),
             _buildPlanCard(
-              title: 'Enterprise Enterprise Tier',
+              title: 'Enterprise Tier',
               price: '₹9,999 / yr',
               branches: 50,
               onTap: () => _upgradePlan('plan_enterprise_50', 50, 9999),
+            ),
+            const SizedBox(height: 28),
+
+            const Text('Payment History & Invoices', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+
+            Consumer(
+              builder: (context, ref, _) {
+                final user = ref.watch(currentUserProfileProvider).value;
+                if (user == null) return const SizedBox.shrink();
+
+                return StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('payments')
+                      .where('owner_id', isEqualTo: user.ownerId)
+                      .orderBy('created_at', descending: true)
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator()));
+                    }
+
+                    final payments = snapshot.data?.docs ?? [];
+                    if (payments.isEmpty) {
+                      return const Card(
+                        child: Padding(
+                          padding: EdgeInsets.all(16),
+                          child: Text('No payment history recorded yet. Trial active.', style: TextStyle(color: AppColors.textSecondaryLight)),
+                        ),
+                      );
+                    }
+
+                    return Column(
+                      children: payments.map((p) {
+                        final data = p.data() as Map<String, dynamic>;
+                        final amount = data['amount'] ?? 0;
+                        final inv = data['invoice_number'] ?? 'INV-N/A';
+                        final date = (data['created_at'] ?? '').toString().split('T').first;
+                        final status = (data['status'] ?? 'verified').toString().toUpperCase();
+
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          child: ListTile(
+                            leading: const CircleAvatar(
+                              backgroundColor: AppColors.brandLight,
+                              child: Icon(Icons.receipt_long_outlined, color: AppColors.brandPrimary, size: 20),
+                            ),
+                            title: Text('Invoice: $inv', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                            subtitle: Text('Date: $date • Gateway: Razorpay • $status', style: const TextStyle(fontSize: 12)),
+                            trailing: Text('₹$amount', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppColors.good)),
+                          ),
+                        );
+                      }).toList(),
+                    );
+                  },
+                );
+              },
             ),
           ],
         ),
