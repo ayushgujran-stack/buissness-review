@@ -1,0 +1,421 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id                 String    @id @default(uuid())
+  email              String    @unique
+  username           String    @unique
+  passwordHash       String
+  name               String
+  phone              String?
+  organizationName   String?
+  address            String?
+  role               String    // SUPER_ADMIN, ADMIN, OWNER, MANAGER, SUPER_MANAGER
+  mustChangePassword Boolean   @default(false)
+  status             String    @default("ACTIVE") // ACTIVE, PENDING, SUSPENDED, INACTIVE
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  // Relations
+  businesses         Business[]
+  licenses           License[]
+  licenseHistories   LicenseHistory[]
+  payments           Payment[]
+  branchAssignments  BranchUser[]
+  notificationRecips NotificationRecipient[]
+  auditLogs          AuditLog[]
+
+  @@map("users")
+}
+
+model Business {
+  id          String   @id @default(uuid())
+  ownerId     String
+  owner       User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name        String
+  category    String
+  logoUrl     String?
+  description String?
+  phone       String?
+  email       String?
+  website     String?
+  address     String?
+  city        String?
+  state       String?
+  country     String?
+  status      String   @default("ACTIVE") // ACTIVE, SUSPENDED, INACTIVE
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  branches        Branch[]
+  reviewForms     ReviewForm[]
+  formAssignments BranchFormAssignment[]
+  reviews         Review[]
+  branchUsers     BranchUser[]
+
+  @@map("businesses")
+}
+
+model Branch {
+  id          String   @id @default(uuid())
+  businessId  String
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name        String
+  address     String
+  phone       String?
+  description String?
+  logoUrl     String?
+  themeColor  String   @default("#1E3A8A")
+  status      String   @default("ACTIVE") // ACTIVE, INACTIVE, SUSPENDED
+  qrToken     String   @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  qrCodes         QrCode[]
+  reviews         Review[]
+  branchUsers     BranchUser[]
+  formAssignments BranchFormAssignment[]
+
+  @@map("branches")
+}
+
+model BranchUser {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  businessId  String
+  business    Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  branchId    String?
+  branch      Branch?   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  role        String    // MANAGER, SUPER_MANAGER
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  permissions ManagerPermission[]
+
+  @@map("branch_users")
+}
+
+model ManagerPermission {
+  id           String     @id @default(uuid())
+  branchUserId String
+  branchUser   BranchUser @relation(fields: [branchUserId], references: [id], onDelete: Cascade)
+  permission   String     // VIEW_DASHBOARD, VIEW_REVIEWS, VIEW_CUSTOMERS, VIEW_REPORTS, RECEIVE_ALERTS, EXPORT_DATA
+  granted      Boolean    @default(true)
+
+  @@map("manager_permissions")
+}
+
+model LicensePlan {
+  id           String    @id @default(uuid())
+  name         String
+  code         String    @unique
+  licenseType  String    @default("PAID") // TRIAL, PAID, CUSTOM
+  durationDays Int
+  maxBranches  Int
+  price        Float
+  currency     String    @default("INR")
+  features     String    // JSON string of feature list
+  isTrial      Boolean   @default(false)
+  active       Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @default(now()) @updatedAt
+
+  licenses     License[]
+
+  @@map("license_plans")
+}
+
+model License {
+  id               String          @id @default(uuid())
+  ownerId          String
+  owner            User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  planId           String?
+  plan             LicensePlan?    @relation(fields: [planId], references: [id], onDelete: SetNull)
+  planName         String
+  licenseType      String          @default("TRIAL") // TRIAL, PAID, CUSTOM
+  status           String          @default("ACTIVE") // TRIAL, ACTIVE, EXPIRED, SUSPENDED
+  maxBranches      Int
+  durationDays     Int             @default(15)
+  startsAt         DateTime        @default(now())
+  expiresAt        DateTime
+  assignmentSource String          @default("TRIAL_INIT") // TRIAL_INIT, PAYMENT_GATEWAY, ADMIN_MANUAL, ADMIN_EXTEND, ADMIN_RENEW
+  assignedBy       String?         // Admin ID or name
+  reason           String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  payments         Payment[]
+  histories        LicenseHistory[]
+
+  @@map("licenses")
+}
+
+model LicenseHistory {
+  id             String   @id @default(uuid())
+  licenseId      String
+  license        License  @relation(fields: [licenseId], references: [id], onDelete: Cascade)
+  ownerId        String
+  owner          User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  action         String   // ASSIGNED, EXTENDED, RENEWED, BRANCH_LIMIT_CHANGED, SUSPENDED, REACTIVATED
+  previousValues String?  // JSON snapshot
+  newValues      String?  // JSON snapshot
+  reason         String?
+  performedBy    String   // Admin email/username
+  createdAt      DateTime @default(now())
+
+  @@map("license_history")
+}
+
+model Payment {
+  id                   String   @id @default(uuid())
+  ownerId              String
+  owner                User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  licenseId            String?
+  license              License? @relation(fields: [licenseId], references: [id], onDelete: SetNull)
+  amount               Float
+  currency             String   @default("INR")
+  gateway              String   @default("RAZORPAY") // RAZORPAY, MOCK, MANUAL_ADMIN
+  transactionId        String   @unique
+  gatewayTransactionId String?
+  signature            String?
+  status               String   @default("SUCCESS") // PENDING, SUCCESS, FAILED
+  paymentStatus        String   @default("SUCCESS") // PENDING, SUCCESS, FAILED
+  verifiedAt           DateTime?
+  invoiceNumber        String   @unique
+  paymentMethod        String?
+  notes                String?
+  createdAt            DateTime @default(now())
+
+  @@map("payments")
+}
+
+model ReviewForm {
+  id                      String   @id @default(uuid())
+  businessId              String
+  business                Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name                    String   @default("Standard Feedback Form")
+  title                   String
+  description             String?
+  status                  String   @default("PUBLISHED") // DRAFT, PUBLISHED, PAUSED, ARCHIVED
+  version                 Int      @default(1)
+  isPublished             Boolean  @default(true)
+  isDefault               Boolean  @default(true)
+  classificationPolicy    String   @default("LOWEST_SCORE") // LOWEST_SCORE, OVERALL_QUESTION, AGGREGATE
+  overallRatingQuestionId String?
+  designSettings          String?  // JSON string: colors, font, layout, buttonStyle, logo
+  customerFieldSettings   String?  // JSON string: nameRequired, mobileRequired, emailEnabled
+  welcomeMessage          String?
+  thankYouMessage         String?  @default("Thank you for your valuable feedback! We appreciate your time.")
+  submitButtonText        String   @default("Submit Feedback")
+  privacyNotice           String?  @default("Your feedback is private and protected.")
+  createdBy               String?
+  publishedAt             DateTime?
+  archivedAt              DateTime?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @default(now()) @updatedAt
+
+  questions               ReviewQuestion[]
+  branchAssignments       BranchFormAssignment[]
+  reviews                 Review[]
+
+  @@map("review_forms")
+}
+
+model ReviewQuestion {
+  id                  String   @id @default(uuid())
+  formId              String
+  form                ReviewForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  text                String
+  description         String?  // Helper text
+  type                String   // STAR_RATING, GOOD_OKAY_POOR, MULTIPLE_CHOICE, YES_NO, TEXT
+  required            Boolean  @default(true)
+  displayOrder        Int      @default(0)
+  active              Boolean  @default(true)
+  positiveValue       String?  // Optional positive indicator for YES_NO or MULTIPLE_CHOICE
+  settings            String?  // JSON validation or scale options
+  classificationRules String?  // JSON custom classification
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @default(now()) @updatedAt
+
+  options             QuestionOption[]
+  answers             ReviewAnswer[]
+
+  @@map("review_questions")
+}
+
+model QuestionOption {
+  id                  String         @id @default(uuid())
+  questionId          String
+  question            ReviewQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  text                String
+  value               String
+  scoreClassification String         @default("GOOD") // GOOD, OKAY, POOR, NEUTRAL
+  displayOrder        Int            @default(0)
+
+  @@map("question_options")
+}
+
+model BranchFormAssignment {
+  id          String     @id @default(uuid())
+  businessId  String
+  business    Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  branchId    String
+  branch      Branch     @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  formId      String
+  form        ReviewForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  isDefault   Boolean    @default(true)
+  isActive    Boolean    @default(true)
+  assignedAt  DateTime   @default(now())
+  assignedBy  String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @default(now()) @updatedAt
+
+  @@unique([branchId, formId])
+  @@map("branch_form_assignments")
+}
+
+model Customer {
+  id           String   @id @default(uuid())
+  name         String
+  mobile       String
+  email        String?
+  firstVisitAt DateTime @default(now())
+  lastVisitAt  DateTime @default(now())
+  totalReviews Int      @default(1)
+
+  reviews      Review[]
+
+  @@unique([mobile])
+  @@map("customers")
+}
+
+model Review {
+  id                    String      @id @default(uuid())
+  businessId            String
+  business              Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  branchId              String
+  branch                Branch      @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  formId                String?
+  form                  ReviewForm? @relation(fields: [formId], references: [id], onDelete: SetNull)
+  formVersion           Int         @default(1)
+  formSnapshot          String?     // Immutable snapshot of form and question text when review was submitted
+  customerId            String
+  customer              Customer    @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  rating                Float       // Normalized 1 to 5
+  sentiment             String      // GOOD, OKAY, POOR
+  overallClassification String?     // GOOD, OKAY, POOR
+  source                String      @default("QR_SCAN")
+  notes                 String?     // Internal management notes
+  status                String      @default("NEW") // NEW, READ, RESOLVED
+  createdAt             DateTime    @default(now())
+
+  answers               ReviewAnswer[]
+
+  @@map("reviews")
+}
+
+model ReviewAnswer {
+  id             String          @id @default(uuid())
+  reviewId       String
+  review         Review          @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  questionId     String?
+  question       ReviewQuestion? @relation(fields: [questionId], references: [id], onDelete: SetNull)
+  questionText   String
+  questionType   String
+  answerText     String
+  numericValue   Float?
+  classification String?         // GOOD, OKAY, POOR, NEUTRAL
+
+  @@map("review_answers")
+}
+
+model QrCode {
+  id            String    @id @default(uuid())
+  branchId      String
+  branch        Branch    @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  token         String    @unique
+  qrImageUrl    String?
+  targetUrl     String
+  scanCount     Int       @default(0)
+  lastScannedAt DateTime?
+  active        Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@map("qr_codes")
+}
+
+model Notification {
+  id          String   @id @default(uuid())
+  type        String   // POOR_REVIEW, LICENSE_EXPIRY, PAYMENT_SUCCESS, PAYMENT_FAILURE, SYSTEM
+  title       String
+  body        String
+  businessId  String?
+  branchId    String?
+  reviewId    String?
+  status      String   @default("UNREAD") // UNREAD, READ, RESOLVED
+  metadata    String?  // JSON
+  createdAt   DateTime @default(now())
+
+  recipients  NotificationRecipient[]
+
+  @@map("notifications")
+}
+
+model NotificationRecipient {
+  id             String       @id @default(uuid())
+  notificationId String
+  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isRead         Boolean      @default(false)
+  readAt         DateTime?
+
+  @@map("notification_recipients")
+}
+
+model Report {
+  id          String   @id @default(uuid())
+  title       String
+  type        String   // DAILY, WEEKLY, MONTHLY, CUSTOM
+  ownerId     String?
+  businessId  String?
+  branchId    String?
+  generatedAt DateTime @default(now())
+  dataJson    String   // Serialized stats snapshot
+
+  @@map("reports")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userName   String?
+  role       String?
+  action     String   // CUSTOMER_CREATED, LICENSE_ASSIGNED, TRIAL_STARTED, PAID_LICENSE_ACTIVATED, LICENSE_EXTENDED, LICENSE_RENEWED, BRANCH_LIMIT_CHANGED, LICENSE_SUSPENDED, LICENSE_REACTIVATED, ENTITLEMENT_GRANTED, etc.
+  entityType String
+  entityId   String?
+  details    String?  // JSON
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@map("audit_logs")
+}
+
+model PlatformSetting {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       String
+  description String?
+  updatedAt   DateTime @updatedAt
+
+  @@map("platform_settings")
+}
