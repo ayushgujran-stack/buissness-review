@@ -1,7 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* standard stable Next.js config */
+  outputFileTracingIncludes: {
+    '/**': ['./prisma/dev.db'],
+  },
 };
 
 export default nextConfig;
