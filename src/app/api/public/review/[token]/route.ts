@@ -373,16 +373,20 @@ export async function POST(
 
     // POOR REVIEW ALERT: trigger immediate notifications if classified as POOR
     if (processed.sentiment === 'POOR') {
-      await triggerPoorReviewAlert({
-        reviewId: review.id,
-        businessId: branch.businessId,
-        branchId: branch.id,
-        businessName: branch.business.name,
-        branchName: branch.name,
-        customerName: customer.name,
-        customerMobile: customer.mobile,
-        rating: processed.overallScore,
-      });
+      try {
+        await triggerPoorReviewAlert({
+          reviewId: review.id,
+          businessId: branch.businessId,
+          branchId: branch.id,
+          businessName: branch.business.name,
+          branchName: branch.name,
+          customerName: customer.name,
+          customerMobile: customer.mobile,
+          rating: processed.overallScore,
+        });
+      } catch (alertErr) {
+        console.error('Non-critical: Failed to send poor review alert notification:', alertErr);
+      }
     }
 
     return NextResponse.json({
@@ -393,6 +397,6 @@ export async function POST(
     });
   } catch (err: any) {
     console.error('Submit review error:', err);
-    return NextResponse.json({ error: err.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: err.message || 'Unable to submit your review. Please try again.' }, { status: 500 });
   }
 }
